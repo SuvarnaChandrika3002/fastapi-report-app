@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Calculator with History & Report</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <h1>Calculator</h1>
+
+    <section class="calc-section">
+      <form id="calc-form">
+        <input
+          type="number"
+          step="any"
+          id="operand1"
+          placeholder="Operand 1"
+          required
+        />
+        <select id="operation" required>
+          <option value="+">+</option>
+          <option value="-">-</option>
+          <option value="*">*</option>
+          <option value="/">/</option>
+          <option value="^">^ (power)</option>
+        </select>
+        <input
+          type="number"
+          step="any"
+          id="operand2"
+          placeholder="Operand 2"
+          required
+        />
+        <button type="submit">Calculate</button>
+      </form>
+
+      <p id="result-display">Result: —</p>
+      <p id="error-message" class="error"></p>
+    </section>
+
+    <section class="history-section">
+      <h2>History (latest 20)</h2>
+      <table id="history-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Expression</th>
+            <th>Result</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="report-section">
+      <h2>Report</h2>
+      <ul id="report-list">
+        <li>Total calculations: <span id="total-calcs">0</span></li>
+        <li>Sum of results: <span id="sum-results">0</span></li>
+        <li>Average result: <span id="avg-result">—</span></li>
+      </ul>
+
+      <h3>By operation</h3>
+      <ul id="op-counts"></ul>
+    </section>
+
+    <script>
+      const form = document.getElementById("calc-form");
+      const resultDisplay = document.getElementById("result-display");
+      const errorMessage = document.getElementById("error-message");
+      const historyTableBody = document.querySelector("#history-table tbody");
+      const totalCalcsEl = document.getElementById("total-calcs");
+      const sumResultsEl = document.getElementById("sum-results");
+      const avgResultEl = document.getElementById("avg-result");
+      const opCountsEl = document.getElementById("op-counts");
+
+      async function fetchHistory() {
+        const res = await fetch("/api/history?limit=20");
+        if (!res.ok) return;
+        const data = await res.json();
+        historyTableBody.innerHTML = "";
+        data.forEach((row) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${row.id}</td>
+            <td>${row.operand1} ${row.operation} ${row.operand2}</td>
+            <td>${row.result}</td>
+            <td>${new Date(row.created_at).toLocaleString()}</td>
+          `;
+          historyTableBody.appendChild(tr);
+        });
+      }
+
+      async function fetchReport() {
+        const res = await fetch("/api/report");
+        if (!res.ok) return;
+        const data = await res.json();
+        totalCalcsEl.textContent = data.total_calculations;
+        sumResultsEl.textContent = data.sum_results.toFixed(4);
+        avgResultEl.textContent =
+          data.average_result === null
+            ? "—"
+            : Number(data.average_result).toFixed(4);
+
+        opCountsEl.innerHTML = "";
+        Object.entries(data.operation_counts).forEach(([op, count]) => {
+          const li = document.createElement("li");
+          li.textContent = `${op}: ${count}`;
+          opCountsEl.appendChild(li);
+        });
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        errorMessage.textContent = "";
+
+        const operand1 = parseFloat(document.getElementById("operand1").value);
+        const operand2 = parseFloat(document.getElementById("operand2").value);
+        const operation = document.getElementById("operation").value;
+
+        try {
+          const res = await fetch("/api/calculate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ operand1, operand2, operation }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || "Unknown error");
+          }
+
+          const data = await res.json();
+          resultDisplay.textContent = `Result: ${data.result}`;
+          await fetchHistory();
+          await fetchReport();
+        } catch (err) {
+          errorMessage.textContent = err.message;
+        }
+      });
+
+      // Initial load
+      fetchHistory();
+      fetchReport();
+    </script>
+  </body>
+</html>
